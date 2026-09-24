@@ -1,0 +1,2 @@
+# 该文件用于让 git 保留空的 data/cuad 目录。
+# CUAD 原始数据（*.json）体积较大，已在 .gitignore 中排除。

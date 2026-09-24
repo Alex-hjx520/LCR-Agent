@@ -1,0 +1,144 @@
+# =============================================================================
+# 企业审查标准（Playbook）—— 合规检查 Agent 的规则来源
+#
+# 字段说明：
+#   required_clauses   必备条款类型，缺失即判定为 HIGH 风险
+#   rules[].id         规则唯一标识，出现在报告与日志中
+#   rules[].severity   info | low | medium | high | critical
+#   rules[].required_clause  该规则关联的条款类型（影响风险项归类）
+#   rules[].applies_to       仅在指定条款类型范围内匹配（为空表示全文匹配）
+#   rules[].forbidden_patterns  命中即不通过（正则，忽略大小写）
+#   rules[].required_patterns   必须命中才通过（正则，忽略大小写）
+#
+# 注意：正则用 YAML 单引号包裹，避免反斜杠被转义。
+# =============================================================================
+
+name: sanhua-standard-purchase
+version: 0.1.0
+description: 面向采购/服务合同的通用审查红线（站在采购方立场）
+counterparty_bias: buyer
+
+# ---------------------------------------------------------------- 必备条款
+required_clauses:
+  - payment
+  - term
+  - termination
+  - confidentiality
+  - liability
+  - governing_law
+  - dispute_resolution
+  - force_majeure
+  - warranty
+  - ip_ownership
+
+# ------------------------------------------------------------------ 红线规则
+rules:
+  # ---- 付款与价格 ----
+  - id: PAY-001
+    requirement: 付款条款须明确付款期限，且不得约定"预付款比例超过 50%"
+    severity: high
+    required_clause: payment
+    required_patterns:
+      - '(付款|支付).{0,30}(日|天|工作日内)'
+    message: 请补充明确的付款期限（如"验收合格后 30 日内支付"）。
+
+  - id: PAY-002
+    requirement: 不得约定全额预付
+    severity: high
+    required_clause: payment
+    forbidden_patterns:
+      - '全额预付'
+      - '100%\s*预付款'
+    message: 建议改为"验收合格后分期付款"，降低预付资金风险。
+
+  # ---- 责任限制 ----
+  - id: LIA-001
+    requirement: 责任限额不得低于合同总金额（年费/总价）
+    severity: critical
+    required_clause: liability
+    forbidden_patterns:
+      - '责任(上限|限额).{0,20}(不超过|以).{0,10}(合同(总)?(金额|价款)的)?(一|1)(倍|0%)以下'
+      - '赔偿责任.{0,15}(不超过|限于).{0,10}(已支付|实付)(费用|款项|金额)'
+    message: 建议将责任上限提高到合同总金额的 100%~200%，或对重大违约/知识产权侵权不设上限。
+
+  - id: LIA-002
+    requirement: 不得约定"对方不承担任何责任"或完全免责
+    severity: critical
+    required_clause: liability
+    forbidden_patterns:
+      - '不承担(任何|一切)(责任|损失)'
+      - '概不负责'
+    message: 完全免责条款在多数法域下可能被认定无效，建议改为"赔偿对方直接损失"。
+
+  # ---- 终止与期限 ----
+  - id: TRM-001
+    requirement: 我方应享有合理的单方解除权（提前 30 日书面通知）
+    severity: medium
+    required_clause: termination
+    required_patterns:
+      - '(提前|至少).{0,10}(30|三十)\s*(日|天).{0,20}(通知|书面)'
+    message: 建议补充"任一方可提前 30 日书面通知解除本合同"。
+
+  - id: TRM-002
+    requirement: 不得约定"对方可随时无条件解除而无需补偿"
+    severity: high
+    required_clause: termination
+    forbidden_patterns:
+      - '(甲方|供方|卖方).{0,20}可(随时|任意).{0,10}(解除|终止).{0,20}(无需|不需|不)'
+    message: 属于单向不对等条款，建议改为对等解除权并约定已发生费用的结算方式。
+
+  # ---- 保密与知识产权 ----
+  - id: CNF-001
+    requirement: 保密义务期限不得短于 3 年
+    severity: medium
+    required_clause: confidentiality
+    forbidden_patterns:
+      - '保密(义务|期限).{0,15}(1|一|2|二)\s*年'
+    message: 建议保密期限不少于 3 年，涉商业秘密的可约定为长期有效。
+
+  - id: IPR-001
+    requirement: 定制开发成果的知识产权应归我方所有或获得永久免费许可
+    severity: high
+    required_clause: ip_ownership
+    forbidden_patterns:
+      - '(知识产权|著作权).{0,20}(均)?(归|属于).{0,10}(乙方|供方|卖方)(所有|享有)'
+    message: 建议约定定制成果归甲方所有，或至少授予甲方永久、不可撤销、免费的使用许可。
+
+  # ---- 争议解决 ----
+  - id: DSP-001
+    requirement: 争议解决不得约定为对方所在地法院或境外仲裁
+    severity: medium
+    required_clause: dispute_resolution
+    applies_to:
+      - dispute_resolution
+      - governing_law
+    forbidden_patterns:
+      - '(由|在).{0,10}(乙方|供方|卖方)(所在地|住所地|注册地)'
+      - '(ICC|SIAC|HKIAC|伦敦|新加坡|香港)(国际)?仲裁'
+    message: 建议约定为甲方所在地有管辖权的人民法院，或境内仲裁机构。
+
+  # ---- 合规与数据 ----
+  - id: CMP-001
+    requirement: 合同须包含反腐败/反商业贿赂的陈述与保证
+    severity: medium
+    required_clause: compliance
+    required_patterns:
+      - '(反腐败|反商业贿赂|反不正当竞争|anti-?bribery)'
+    message: 建议补充反腐败合规条款，并要求对方作出合规陈述与保证。
+
+  - id: DPR-001
+    requirement: 涉及个人信息处理时须约定数据安全与保密措施
+    severity: high
+    required_clause: data_protection
+    required_patterns:
+      - '(个人信息|数据安全|数据保护|保密措施|加密)'
+    message: 依据《个人信息保护法》第 21 条，建议补充数据处理的目的、期限、安全措施与违约责任。
+
+  # ---- 不可抗力 ----
+  - id: FRM-001
+    requirement: 不可抗力条款须包含通知义务与后果处理
+    severity: low
+    required_clause: force_majeure
+    required_patterns:
+      - '(不可抗力)'
+    message: 建议明确不可抗力发生后的通知期限、证明义务及合同顺延/解除的处理方式。

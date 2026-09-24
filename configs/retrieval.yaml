@@ -1,0 +1,69 @@
+# =============================================================================
+# 检索实验配置
+# 用于对比不同检索策略对审查质量的影响（配合 scripts/evaluate_retrieval.py）。
+# =============================================================================
+
+name: hybrid-rrf
+version: 0.1.0
+description: BM25 + 稠密向量，RRF 融合（默认策略）
+
+# ---------------------------------------------------------------- 索引构建
+index:
+  # 建索引时使用的 CUAD 合同数量（null = 全量 510 份）
+  limit_contracts: null
+  # 过短的答案不具备参考价值，直接过滤
+  min_answer_chars: 20
+  # 以答案为中心截取的上下文窗口（字符）
+  context_window: 400
+  # 向量写入批大小
+  batch_size: 64
+  # 是否在重建前清空已有 collection
+  reset: true
+
+# ------------------------------------------------------------------ 召回器
+retrievers:
+  bm25:
+    enabled: true
+    k1: 1.5
+    b: 0.75
+    top_k: 20
+    # 中文分词：jieba（已装则自动使用）| mixed（单字 + 二元组）
+    tokenizer: mixed
+  vector:
+    enabled: true
+    top_k: 20
+    collection: cuad_clauses
+    metric: cosine
+
+# ------------------------------------------------------------------ 融合
+fusion:
+  strategy: rrf           # rrf | weighted | none
+  rrf_k: 60
+  weights:
+    bm25: 1.0
+    vector: 1.0
+
+# ------------------------------------------------------------------ 过滤
+filter:
+  min_score: 0.2
+  # 只召回与目标条款类型一致的先例（对比实验用，默认关闭）
+  restrict_clause_type: false
+  corpora:
+    - cuad
+    - playbook
+
+# ---------------------------------------------------------------- 实验对比
+experiments:
+  - name: bm25-only
+    overrides:
+      retrievers.vector.enabled: false
+  - name: vector-only
+    overrides:
+      retrievers.bm25.enabled: false
+  - name: hybrid-rrf
+    overrides: {}
+  - name: hybrid-weighted
+    overrides:
+      fusion.strategy: weighted
+      fusion.weights.bm25: 0.4
+      fusion.weights.vector: 0.6
